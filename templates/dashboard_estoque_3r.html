@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Estoque · 3R Indústria</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>/*__PAINEL_STYLES__*/
+.bar-pct{height:8px;border-radius:999px;background:var(--surface2);overflow:hidden;min-width:88px}
+.bar-pct>i{display:block;height:100%;border-radius:999px;background:var(--accent)}
+.bar-pct.ok>i{background:var(--good)}.bar-pct.wn>i{background:var(--warn)}.bar-pct.dn>i{background:var(--bad)}
+.tag.ok{background:var(--good-soft);color:var(--good)}
+.tag.can{background:var(--bad-soft);color:var(--bad)}
+.dates-br{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dates-br .ctl{width:118px;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.dates-br .ctl.ok{border-color:color-mix(in srgb,var(--good) 55%,var(--line))}
+.dates-br .ctl.bad{border-color:var(--bad)}
+.dates-br label{font-size:12px;color:var(--ink3)}
+</style>
+<script>/*__CHART_JS__*/</script>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+  <div class="brand"><div class="logo">3R</div><div><b id="empresa">3R Indústria</b><small>Controle de estoque</small></div></div>
+  <nav class="nav" id="nav">
+    <a href="#visao" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 13h8V3H3zM13 21h8V11h-8zM13 3v6h8V3zM3 21h8v-6H3z"/></svg>Visão geral</a>
+    <a href="#saldos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 16l4-8 4 5 4-9"/></svg>Saldos por NF</a>
+    <a href="#mov"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18M3 12h18M3 19h18"/></svg>Movimentação</a>
+    <a href="#financeiro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Financeiro 5124</a>
+    <a href="#alerta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4"/><circle cx="12" cy="12" r="3"/></svg>Alertas</a>
+    <a href="#posicao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19h16M6 16V9M10 16V5M14 16v-4M18 16V7"/></svg>Posição</a>
+  </nav>
+  <div class="side-foot">
+    <div class="status" id="status"><span class="dot"></span><span id="statusTxt">Pronto</span></div>
+    <button class="ghost" id="theme" type="button">Tema claro</button>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="bar">
+    <div>
+      <h1>Controle de estoque por NF de origem</h1>
+      <div class="per" id="periodo"></div>
+    </div>
+    <div class="controls">
+      <div class="seg" id="filtPeriodo" role="group" aria-label="Período">
+        <button type="button" data-per="tudo">Todo o período</button>
+        <button type="button" data-per="mes" aria-pressed="true">Mês atual</button>
+        <button type="button" data-per="trimestre">Trimestre</button>
+        <button type="button" data-per="custom">Período</button>
+      </div>
+      <div class="dates-br" id="boxDatas">
+        <label for="dtDe">De</label>
+        <input class="ctl" id="dtDe" type="text" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" autocomplete="off" aria-label="Data inicial">
+        <label for="dtAte">Até</label>
+        <input class="ctl" id="dtAte" type="text" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" autocomplete="off" aria-label="Data final">
+      </div>
+      <div class="seg" id="filtCanc" role="group" aria-label="Situação da NF">
+        <button type="button" data-canc="ativas" aria-pressed="true">Ativas</button>
+        <button type="button" data-canc="canceladas">Canceladas</button>
+        <button type="button" data-canc="todas">Todas</button>
+      </div>
+      <div class="seg" id="filtStatus" role="group" aria-label="Status do saldo">
+        <button type="button" data-st="todos" aria-pressed="true">Todos</button>
+        <button type="button" data-st="disponivel">Com saldo</button>
+        <button type="button" data-st="baixo">≤10% restante</button>
+        <button type="button" data-st="zerado">Zerados</button>
+        <button type="button" data-st="sem_vinculo">Saídas s/ vínculo</button>
+      </div>
+      <input class="search" id="q" type="search" placeholder="Buscar NF, produto ou observação" aria-label="Buscar">
+      <button class="btn" id="btnCsv" type="button">Exportar CSV</button>
+    </div>
+  </header>
+
+  <section id="visao">
+    <div class="grid g4" id="kpis"></div>
+    <div class="grid g21">
+      <div class="card">
+        <div class="ch"><h3>% ainda disponível por NF de entrada</h3><span class="muted">Saldo ÷ quantidade de entrada</span></div>
+        <div class="chart tall"><canvas id="cDisp"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="ch"><h3>Uso do saldo</h3></div>
+        <div class="donut"><canvas id="cUso"></canvas><div class="donut-c" id="usoC"></div></div>
+        <div class="leg" id="usoLeg"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="saldos">
+    <div class="sh">
+      <h2>Saldos por NF de origem</h2>
+      <div class="tools">
+        <span class="muted" id="saldoSub"></span>
+        <input class="search" id="qSaldo" type="search" placeholder="Buscar NF, produto ou descrição" aria-label="Buscar nos saldos">
+      </div>
+    </div>
+    <div class="card">
+      <div class="tw"><table id="tSaldos"><thead><tr>
+        <th>NF origem</th><th>Data entrada</th><th>Produto</th><th>CFOP</th>
+        <th class="num">Entrada</th><th class="num">Saídas</th><th class="num">Saldo</th>
+        <th class="num">% restante</th><th>Status</th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="mov">
+    <div class="sh">
+      <h2>Movimentação de estoque</h2>
+      <div class="tools">
+        <span class="muted">Entrada 1901 · saída 5902</span>
+        <input class="search" id="qMov" type="search" placeholder="Buscar NF, produto ou descrição" aria-label="Buscar na movimentação">
+      </div>
+    </div>
+    <div class="card">
+      <div class="ch">
+        <div class="tabs" data-tabs>
+          <button type="button" aria-selected="true" data-pane="mEnt">Entradas 1901</button>
+          <button type="button" aria-selected="false" data-pane="mSai">Saídas 5902</button>
+        </div>
+        <span class="muted" id="movSub"></span>
+      </div>
+      <div class="tw" id="mEnt"><table id="tEnt"><thead><tr>
+        <th>NF</th><th>Data</th><th>Produto</th><th>CFOP</th><th class="num">Qtde</th><th class="num">Valor</th>
+      </tr></thead><tbody></tbody></table></div>
+      <div class="tw" id="mSai" hidden><table id="tSai"><thead><tr>
+        <th>NF saída</th><th>Data</th><th>Produto</th><th>CFOP</th><th class="num">Qtde</th>
+        <th>NF origem (obs.)</th><th>Observação</th><th>Vínculo</th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="financeiro">
+    <div class="sh"><h2>Financeiro · CFOP 5124</h2><span class="muted">Valor da NF para contabilização — não move estoque</span></div>
+    <div class="grid g4" id="kpisFin"></div>
+    <div class="card">
+      <div class="tw"><table id="tFin"><thead><tr>
+        <th>NF</th><th>Data</th><th>Cliente / destinatário</th><th>CFOP</th>
+        <th class="num">Qtde (itens)</th><th class="num">Valor da NF</th><th>Estoque</th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="alerta">
+    <div class="sh"><h2>Alertas</h2><span class="muted">Saídas sem NF de origem na observação (não abatem saldo por lote) e saldos críticos</span></div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="ch"><h3>Saídas sem vínculo</h3></div>
+        <div class="tw short"><table id="tSem"><thead><tr>
+          <th>NF saída</th><th>Data</th><th>Produto</th><th class="num">Qtde</th><th>Observação</th>
+        </tr></thead><tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="ch"><h3>NF com ≤10% restante</h3></div>
+        <div class="tw short"><table id="tCrit"><thead><tr>
+          <th>NF origem</th><th>Produto</th><th class="num">Saldo</th><th class="num">% restante</th>
+        </tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="posicao">
+    <div class="sh"><h2>Posição de estoque</h2><span class="muted" id="posSub">Estoque inicial · movimentação · estoque final</span></div>
+    <div class="grid g4" id="kpisPos"></div>
+    <div class="card">
+      <div class="tw short"><table id="tPos"><thead><tr>
+        <th>Etapa</th><th class="num">Quantidade</th><th>Detalhe</th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+</div>
+</div>
+<script type="application/json" id="dados">__PAYLOAD__</script>
+<script>
+const $=id=>document.getElementById(id);
+const D=window.__STATIC__||JSON.parse(document.getElementById('dados').textContent);
+const M=D.meta||{};
+const E0=D.entradas||[];
+const X0=D.saidas||[];
+const F0=D.financeiro_5124||[];
+if(M.empresa){const el=$('empresa');if(el)el.textContent=M.empresa;}
+document.title=`Estoque · ${M.empresa||'3R Indústria'}`;
+
+const num=n=>(n??0).toLocaleString('pt-BR',{maximumFractionDigits:3});
+const brl=n=>(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const pct=(n,d=1)=>((n||0)*100).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d})+'%';
+const dbr=s=>s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+let modo='todos', modoPer='tudo', modoCanc='ativas', charts={};
+let E=E0.slice(), X=X0.slice(), F=F0.slice(), S=[];
+let pos={inicial:0, entradas:0, saidas:0, saidas_vinc:0, saidas_sem:0, final:0};
+
+function ehCanc(r){return !!r.cancelada;}
+function filtroCanc(lista){
+  if(modoCanc==='ativas') return lista.filter(r=>!ehCanc(r));
+  if(modoCanc==='canceladas') return lista.filter(r=>ehCanc(r));
+  return lista.slice();
+}
+function soAtivas(lista){return lista.filter(r=>!ehCanc(r));}
+
+function pad2(n){return String(n).padStart(2,'0');}
+function hoje(){return new Date();}
+function iso(d){return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;}
+function brFromDate(d){return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)}/${d.getFullYear()}`;}
+
+function parseBr(txt){
+  const t=(txt||'').trim();
+  const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
+  if(!m) return null;
+  const d=+m[1], mo=+m[2], y=+m[3];
+  if(mo<1||mo>12||d<1||d>31) return null;
+  const dt=new Date(y, mo-1, d);
+  if(dt.getFullYear()!==y||dt.getMonth()!==mo-1||dt.getDate()!==d) return null;
+  return iso(dt);
+}
+
+function mascaraData(el){
+  el.addEventListener('keydown',e=>{
+    if(['Backspace','Delete','Tab','ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+    if(e.ctrlKey||e.metaKey) return;
+    if(!/^\d$/.test(e.key)) e.preventDefault();
+  });
+  el.addEventListener('input',()=>{
+    const dig=el.value.replace(/\D/g,'').slice(0,8);
+    let out='';
+    if(dig.length<=2) out=dig;
+    else if(dig.length<=4) out=dig.slice(0,2)+'/'+dig.slice(2);
+    else out=dig.slice(0,2)+'/'+dig.slice(2,4)+'/'+dig.slice(4);
+    el.value=out;
+    const ok=out.length<10||!!parseBr(out);
+    el.classList.toggle('ok', out.length===10 && ok);
+    el.classList.toggle('bad', out.length===10 && !ok);
+    if(out.length===10 && parseBr(out)){
+      // digitação livre: passa a ser período específico
+      modoPer='custom';
+      [...$('filtPeriodo').querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.per==='custom')));
+      if(parseBr($('dtDe').value) && parseBr($('dtAte').value)) filtrar();
+    }
+  });
+  el.addEventListener('blur',()=>{ if(parseBr($('dtDe').value) && parseBr($('dtAte').value)) filtrar(); });
+}
+
+function rangeMes(ref){
+  const ini=new Date(ref.getFullYear(), ref.getMonth(), 1);
+  const fim=new Date(ref.getFullYear(), ref.getMonth()+1, 0);
+  return [ini, fim];
+}
+function rangeTrimestre(ref){
+  const q=Math.floor(ref.getMonth()/3);
+  const ini=new Date(ref.getFullYear(), q*3, 1);
+  const fim=new Date(ref.getFullYear(), q*3+3, 0);
+  return [ini, fim];
+}
+function rangeTudo(){
+  const datas=[...E0,...X0,...F0].map(r=>r.data).filter(Boolean).sort();
+  if(!datas.length){
+    const h=hoje();
+    return [new Date(h.getFullYear(),0,1), h];
+  }
+  const a=datas[0].split('-').map(Number);
+  const b=datas[datas.length-1].split('-').map(Number);
+  return [new Date(a[0],a[1]-1,a[2]), new Date(b[0],b[1]-1,b[2])];
+}
+
+function aplicarPresetDatas(){
+  const h=hoje();
+  let ini, fim;
+  if(modoPer==='mes') [ini,fim]=rangeMes(h);
+  else if(modoPer==='trimestre') [ini,fim]=rangeTrimestre(h);
+  else if(modoPer==='tudo') [ini,fim]=rangeTudo();
+  else {
+    // custom: não sobrescreve se já tiver valor válido
+    if(parseBr($('dtDe').value) && parseBr($('dtAte').value)) return;
+    [ini,fim]=rangeMes(h);
+  }
+  // mês/trimestre: até hoje se o fim for futuro
+  if(fim>h) fim=h;
+  $('dtDe').value=brFromDate(ini);
+  $('dtAte').value=brFromDate(fim);
+  $('dtDe').classList.add('ok'); $('dtAte').classList.add('ok');
+  $('dtDe').classList.remove('bad'); $('dtAte').classList.remove('bad');
+}
+
+function calcSaldos(entradas, saidas){
+  const lotes=new Map();
+  const ordem=[];
+  const porNf=new Map();
+  for(const e of entradas){
+    const chave=e.nf+'|'+(e.codigo||e.produto||'');
+    if(!lotes.has(chave)){
+      lotes.set(chave,{nf:e.nf,data:e.data,produto:e.produto,codigo:e.codigo,cfop:e.cfop,entrada:0,saida:0});
+      ordem.push(chave);
+      if(!porNf.has(e.nf)) porNf.set(e.nf,[]);
+      porNf.get(e.nf).push(chave);
+    }
+    const L=lotes.get(chave);
+    L.entrada+=e.qtde||0;
+    if(e.data && (!L.data || e.data<L.data)) L.data=e.data;
+  }
+  for(const s of saidas){
+    const origem=s.nf_origem;
+    if(!origem) continue;
+    const cod=s.codigo||s.produto||'';
+    let chave=origem+'|'+cod;
+    if(!lotes.has(chave)){
+      const cands=porNf.get(origem)||[];
+      if(cands.length) chave=cands[0];
+      else {
+        lotes.set(chave,{nf:origem,data:s.data,produto:s.produto||'(sem entrada no período)',codigo:s.codigo,cfop:'',entrada:0,saida:0});
+        ordem.push(chave);
+        if(!porNf.has(origem)) porNf.set(origem,[]);
+        porNf.get(origem).push(chave);
+      }
+    }
+    lotes.get(chave).saida+=s.qtde||0;
+  }
+  const out=[];
+  for(const chave of ordem){
+    const r=lotes.get(chave);
+    const saldo=r.entrada-r.saida;
+    const pct_restante=r.entrada>1e-12?(saldo/r.entrada):(r.saida>0?0:1);
+    out.push({
+      nf:r.nf,data:r.data,produto:r.produto,codigo:r.codigo,cfop:r.cfop,
+      entrada:+r.entrada.toFixed(6),saida:+r.saida.toFixed(6),saldo:+saldo.toFixed(6),
+      pct_restante:saldo>=0?Math.max(pct_restante,0):pct_restante
+    });
+  }
+  out.sort(cmpMov);
+  return out;
+}
+
+/** Ordem cronológica: data, depois número da NF. */
+function cmpMov(a,b){
+  const da=a.data||'', db=b.data||'';
+  if(da!==db) return da<db?-1:1;
+  return String(a.nf||'').localeCompare(String(b.nf||''),'pt-BR',{numeric:true});
+}
+
+function noPeriodo(isoData, de, ate){
+  if(!isoData) return false;
+  if(de && isoData<de) return false;
+  if(ate && isoData>ate) return false;
+  return true;
+}
+
+function statusSaldo(r){
+  if((r.saldo||0)<=0.0001) return {lab:'Zerado',cls:'dn'};
+  if((r.pct_restante||0)<=0.10) return {lab:'Crítico',cls:'wn'};
+  if((r.pct_restante||0)>=0.999) return {lab:'Intacto',cls:'ok'};
+  if((r.pct_restante||0)>=0.90) return {lab:'Quase intacto',cls:'ok'};
+  return {lab:'Em uso',cls:'mu'};
+}
+
+function somaSaldo(saldos){return saldos.reduce((s,r)=>s+(r.saldo||0),0);}
+function somaQtde(lista){return lista.reduce((s,r)=>s+(r.qtde||0),0);}
+
+function filtrar(){
+  const de=parseBr($('dtDe').value);
+  const ate=parseBr($('dtAte').value);
+  const datasOk=!!de && !!ate && de<=ate;
+  if(!datasOk){
+    $('statusTxt').textContent='Informe datas válidas (dd/mm/aaaa)';
+    $('status').classList.add('err');
+    return;
+  }
+  $('status').classList.remove('err');
+  $('statusTxt').textContent='Pronto';
+
+  // Estoque (sempre só NFs ativas — cancelada não move saldo)
+  const Eantes=soAtivas(E0.filter(r=>r.data && r.data<de));
+  const Xantes=soAtivas(X0.filter(r=>r.data && r.data<de));
+  const inicial=somaSaldo(calcSaldos(Eantes, Xantes));
+
+  // Movimentação no período (respeita filtro Ativas/Canceladas/Todas)
+  const Eper=E0.filter(r=>noPeriodo(r.data,de,ate)).sort(cmpMov);
+  const Xper=X0.filter(r=>noPeriodo(r.data,de,ate)).sort(cmpMov);
+  const Fper=F0.filter(r=>noPeriodo(r.data,de,ate)).sort(cmpMov);
+  E=filtroCanc(Eper);
+  X=filtroCanc(Xper);
+  F=filtroCanc(Fper);
+
+  const Eatv=soAtivas(Eper);
+  const Xatv=soAtivas(Xper);
+  const entradas=somaQtde(Eatv);
+  const saidas=somaQtde(Xatv);
+  const saidas_vinc=somaQtde(Xatv.filter(r=>r.nf_origem));
+  const saidas_sem=somaQtde(Xatv.filter(r=>!r.nf_origem));
+
+  const Eate=soAtivas(E0.filter(r=>r.data && r.data<=ate));
+  const Xate=soAtivas(X0.filter(r=>r.data && r.data<=ate));
+  const final=somaSaldo(calcSaldos(Eate, Xate));
+
+  // Saldos por ordem de entrada (somente ativas)
+  S=calcSaldos(Eate, Xate);
+  pos={inicial, entradas, saidas, saidas_vinc, saidas_sem, final};
+
+  const qGlob=($('q').value||'').trim().toLowerCase();
+  const qSaldo=($('qSaldo').value||'').trim().toLowerCase();
+  let lista=S.slice();
+  if(modo==='disponivel') lista=lista.filter(r=>r.saldo>0.0001);
+  else if(modo==='baixo') lista=lista.filter(r=>r.saldo>0.0001 && r.pct_restante<=0.10);
+  else if(modo==='zerado') lista=lista.filter(r=>r.saldo<=0.0001);
+  else if(modo==='sem_vinculo') lista=[];
+  const matchSaldo=r=>[r.nf,r.produto,r.codigo,r.cfop].join(' ').toLowerCase();
+  if(qGlob) lista=lista.filter(r=>matchSaldo(r).includes(qGlob));
+  if(qSaldo) lista=lista.filter(r=>matchSaldo(r).includes(qSaldo));
+
+  const rotulo={tudo:'Todo o período',mes:'Mês atual',trimestre:'Trimestre atual',custom:'Período específico'}[modoPer]||'Período';
+  $('periodo').textContent=`${rotulo}: ${$('dtDe').value} a ${$('dtAte').value} · gerado ${M.gerado_em||''}${M.fonte?` · ${M.fonte}`:''}`;
+  $('posSub').textContent=`${$('dtDe').value} a ${$('dtAte').value} · saídas sem referência não abatem saldo por NF`;
+  render(lista);
+}
+
+function matchMov(r){
+  return [r.nf,r.nf_origem,r.produto,r.codigo,r.cfop,r.obs].join(' ').toLowerCase();
+}
+
+function kpi(lab,val,note){
+  const sm=String(val).length>16;
+  return `<div class="card kpi flat"><span class="lab">${lab}</span><div class="val${sm?' sm':''}">${val}</div><div class="note">${note||''}</div></div>`;
+}
+
+function render(lista){
+  const entQ=E.reduce((s,r)=>s+(r.qtde||0),0);
+  const saiQ=X.reduce((s,r)=>s+(r.qtde||0),0);
+  const salQ=S.reduce((s,r)=>s+(r.saldo||0),0);
+  const sem=X.filter(r=>!r.nf_origem).length;
+  const crit=S.filter(r=>r.saldo>0.0001 && r.pct_restante<=0.10).length;
+  const medio=S.length? S.reduce((s,r)=>s+(r.pct_restante||0),0)/S.length : 0;
+  const totFin=F.reduce((s,r)=>s+(r.valor_nf||0),0);
+
+  $('kpis').innerHTML=[
+    kpi('NFs entrada 1901', num(E.length), `${num(entQ)} un. alimentando saldo`),
+    kpi('NFs saída 5902', num(X.length), `${num(saiQ)} un. consumidas`),
+    kpi('Saldo disponível', num(salQ), `${pct(medio)} médio restante`),
+    kpi('CFOP 5124 (financeiro)', brl(totFin), `${num(F.length)} NF(s) · não move estoque`),
+  ].join('');
+
+  $('kpisFin').innerHTML=[
+    kpi('Notas CFOP 5124', num(F.length), 'industrialização / faturamento'),
+    kpi('Valor total', brl(totFin), 'soma do valor das NFs'),
+    kpi('Impacto no estoque', 'Nenhum', '5124 só contabiliza financeiramente'),
+    kpi('Atenção estoque', `${crit} críticas · ${sem} s/ vínculo`, '≤10% restante ou obs. ilegível'),
+  ].join('');
+
+  $('tFin').querySelector('tbody').innerHTML=F.length?F.map(r=>`<tr>
+    <td><b>${esc(r.nf)}</b>${r.cancelada?' <span class="tag can">Cancelada</span>':''}</td><td>${dbr(r.data)}</td>
+    <td class="wrapc">${esc(r.cliente||'—')}</td><td>${esc(r.cfop||'5124')}</td>
+    <td class="num">${num(r.qtde)}</td><td class="num"><b>${brl(r.valor_nf)}</b></td>
+    <td><span class="tag mu">Não move</span></td>
+  </tr>`).join(''):`<tr><td colspan="7" class="empty">Nenhuma NF CFOP 5124 no filtro</td></tr>`;
+
+  $('saldoSub').textContent=`${lista.length} registro(s) no filtro`;
+
+  const tb=$('tSaldos').querySelector('tbody');
+  if(modo==='sem_vinculo'){
+    tb.innerHTML=`<tr><td colspan="9" class="empty">Use a aba Alertas para saídas sem vínculo</td></tr>`;
+  }else if(!lista.length){
+    tb.innerHTML=`<tr><td colspan="9" class="empty">Nenhum saldo no filtro</td></tr>`;
+  }else{
+    tb.innerHTML=lista.map(r=>{
+      const st=statusSaldo(r);
+      const cls=r.pct_restante>=0.9?'ok':(r.pct_restante<=0.1?'dn':'wn');
+      return `<tr>
+        <td><b>${esc(r.nf)}</b></td><td>${dbr(r.data)}</td>
+        <td class="wrapc">${esc(r.produto||'—')}</td><td>${esc(r.cfop||'—')}</td>
+        <td class="num">${num(r.entrada)}</td><td class="num">${num(r.saida)}</td>
+        <td class="num"><b>${num(r.saldo)}</b></td>
+        <td class="num"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+          <span>${pct(r.pct_restante)}</span>
+          <span class="bar-pct ${cls}" title="${pct(r.pct_restante)}"><i style="width:${Math.max(0,Math.min(100,(r.pct_restante||0)*100))}%"></i></span>
+        </div></td>
+        <td><span class="tag ${st.cls}">${st.lab}</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  const qMov=($('qMov').value||'').trim().toLowerCase();
+  const Eview=qMov?E.filter(r=>matchMov(r).includes(qMov)):E;
+  const Xview=qMov?X.filter(r=>matchMov(r).includes(qMov)):X;
+  if($('movSub')) $('movSub').textContent=`${Eview.length} entrada(s) · ${Xview.length} saída(s)`;
+
+  const tagCanc=r=>r.cancelada?' <span class="tag can">Cancelada</span>':'';
+  $('tEnt').querySelector('tbody').innerHTML=Eview.length?Eview.map(r=>`<tr>
+    <td><b>${esc(r.nf)}</b>${tagCanc(r)}</td><td>${dbr(r.data)}</td><td class="wrapc">${esc(r.produto)}</td>
+    <td>${esc(r.cfop)}</td><td class="num">${num(r.qtde)}</td><td class="num">${brl(r.valor)}</td>
+  </tr>`).join(''):`<tr><td colspan="6" class="empty">${qMov?'Nenhuma entrada na busca':'Sem entradas no filtro'}</td></tr>`;
+
+  $('tSai').querySelector('tbody').innerHTML=Xview.length?Xview.map(r=>`<tr>
+    <td><b>${esc(r.nf)}</b>${tagCanc(r)}</td><td>${dbr(r.data)}</td><td class="wrapc">${esc(r.produto)}</td>
+    <td>${esc(r.cfop)}</td><td class="num">${num(r.qtde)}</td>
+    <td>${r.nf_origem?`<b>${esc(r.nf_origem)}</b>`:'—'}</td>
+    <td class="wrapc">${esc(r.obs||'—')}</td>
+    <td>${r.cancelada?'<span class="tag can">Cancelada</span>':(r.nf_origem?'<span class="tag ok">OK</span>':'<span class="tag dn">Sem vínculo</span>')}</td>
+  </tr>`).join(''):`<tr><td colspan="8" class="empty">${qMov?'Nenhuma saída na busca':'Sem saídas no filtro'}</td></tr>`;
+
+  const semL=X.filter(r=>!r.nf_origem);
+  $('tSem').querySelector('tbody').innerHTML=semL.length?semL.map(r=>`<tr>
+    <td>${esc(r.nf)}</td><td>${dbr(r.data)}</td><td class="wrapc">${esc(r.produto)}</td>
+    <td class="num">${num(r.qtde)}</td><td class="wrapc">${esc(r.obs||'—')}</td>
+  </tr>`).join(''):`<tr><td colspan="5" class="empty">Nenhuma saída sem vínculo</td></tr>`;
+
+  const critL=S.filter(r=>r.saldo>0.0001 && r.pct_restante<=0.10).sort((a,b)=>a.pct_restante-b.pct_restante);
+  $('tCrit').querySelector('tbody').innerHTML=critL.length?critL.map(r=>`<tr>
+    <td>${esc(r.nf)}</td><td class="wrapc">${esc(r.produto)}</td>
+    <td class="num">${num(r.saldo)}</td><td class="num wn">${pct(r.pct_restante)}</td>
+  </tr>`).join(''):`<tr><td colspan="4" class="empty">Nenhuma NF crítica</td></tr>`;
+
+  $('kpisPos').innerHTML=[
+    kpi('Estoque inicial', num(pos.inicial), 'saldo antes da data inicial'),
+    kpi('Entradas no período', num(pos.entradas), 'CFOP 1901'),
+    kpi('Saídas no período', num(pos.saidas), `${num(pos.saidas_vinc)} com NF origem · ${num(pos.saidas_sem)} sem`),
+    kpi('Estoque final', num(pos.final), 'saldo até a data final'),
+  ].join('');
+  $('tPos').querySelector('tbody').innerHTML=`
+    <tr><td><b>Estoque inicial</b></td><td class="num">${num(pos.inicial)}</td><td>Saldo das NFs 1901 − saídas 5902 vinculadas, antes do período</td></tr>
+    <tr><td>(+) Entradas</td><td class="num up">${num(pos.entradas)}</td><td>CFOP 1901 no período</td></tr>
+    <tr><td>(−) Saídas com NF origem</td><td class="num dn">${num(pos.saidas_vinc)}</td><td>CFOP 5902 com observação “REFERENTE A NF…”</td></tr>
+    <tr><td>Saídas sem referência</td><td class="num wn">${num(pos.saidas_sem)}</td><td>Entram na movimentação, mas não abatem saldo por lote</td></tr>
+    <tr class="sub-row"><td><b>Estoque final</b></td><td class="num"><b>${num(pos.final)}</b></td><td>Posição acumulada até a data final</td></tr>`;
+
+  chartsBase();
+  const top=[...lista].sort((a,b)=>b.pct_restante-a.pct_restante).slice(0,15);
+  const labels=top.map(r=>'NF '+r.nf);
+  const vals=top.map(r=>+(r.pct_restante*100).toFixed(1));
+  if(charts.disp) charts.disp.destroy();
+  charts.disp=new Chart($('cDisp'),{type:'bar',data:{labels,datasets:[{label:'% restante',data:vals,backgroundColor:css('--c2'),borderRadius:6}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{max:100,ticks:{callback:v=>v+'%'},grid:{color:css('--grid')}},y:{grid:{display:false}}}}});
+
+  const usado=S.reduce((s,r)=>s+(r.saida||0),0);
+  const disp=S.reduce((s,r)=>s+(r.saldo||0),0);
+  const tot=usado+disp||1;
+  if(charts.uso) charts.uso.destroy();
+  charts.uso=new Chart($('cUso'),{type:'doughnut',data:{labels:['Já utilizado','Ainda disponível'],datasets:[{data:[usado,disp],backgroundColor:[css('--c3'),css('--c6')],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{display:false}}}});
+  $('usoC').innerHTML=`<div><b>${pct(disp/tot,0)}</b><span>disponível</span></div>`;
+  $('usoLeg').innerHTML=`
+    <div><i style="background:${css('--c3')}"></i><span>Já utilizado</span><span class="v">${num(usado)}</span><span class="p">${pct(usado/tot,0)}</span></div>
+    <div><i style="background:${css('--c6')}"></i><span>Ainda disponível</span><span class="v">${num(disp)}</span><span class="p">${pct(disp/tot,0)}</span></div>`;
+}
+
+function chartsBase(){
+  Chart.defaults.font.family=css('--font');
+  Chart.defaults.font.size=12;
+  Chart.defaults.color=css('--ink3');
+  Chart.defaults.borderColor=css('--grid');
+}
+
+mascaraData($('dtDe'));
+mascaraData($('dtAte'));
+
+$('filtPeriodo').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-per]'); if(!b) return;
+  [...$('filtPeriodo').querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  modoPer=b.dataset.per;
+  aplicarPresetDatas();
+  filtrar();
+});
+
+$('filtCanc').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-canc]'); if(!b) return;
+  [...$('filtCanc').querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  modoCanc=b.dataset.canc; filtrar();
+});
+$('filtStatus').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-st]'); if(!b) return;
+  [...$('filtStatus').querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  modo=b.dataset.st; filtrar();
+});
+$('q').addEventListener('input',filtrar);
+$('qSaldo').addEventListener('input',filtrar);
+$('qMov').addEventListener('input',filtrar);
+
+document.querySelectorAll('[data-tabs]').forEach(tabs=>{
+  tabs.addEventListener('click',e=>{
+    const b=e.target.closest('button[data-pane]'); if(!b) return;
+    [...tabs.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-selected',String(x===b)));
+    const pane=b.dataset.pane;
+    $('mEnt').hidden=pane!=='mEnt';
+    $('mSai').hidden=pane!=='mSai';
+  });
+});
+
+$('theme').onclick=()=>{
+  const dark=document.documentElement.getAttribute('data-theme')!=='light';
+  document.documentElement.setAttribute('data-theme',dark?'light':'dark');
+  $('theme').textContent=dark?'Tema escuro':'Tema claro';
+  filtrar();
+};
+
+$('nav').addEventListener('click',e=>{
+  const a=e.target.closest('a[href^="#"]'); if(!a) return;
+  [...$('nav').querySelectorAll('a')].forEach(x=>x.classList.toggle('on',x===a));
+});
+
+$('btnCsv').onclick=()=>{
+  const rows=[['NF origem','Data','Produto','CFOP','Entrada','Saida','Saldo','Pct restante']];
+  for(const r of S) rows.push([r.nf,r.data,r.produto,r.cfop,r.entrada,r.saida,r.saldo,(r.pct_restante*100).toFixed(2)+'%']);
+  rows.push([]);
+  rows.push(['NF 5124','Data','Cliente','CFOP','Qtde','Valor NF','Move estoque']);
+  for(const r of F) rows.push([r.nf,r.data,r.cliente,r.cfop,r.qtde,r.valor_nf,'Nao']);
+  const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(';')).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='saldos_estoque_3r.csv'; a.click();
+};
+
+// início: todo o período da carga (jan→hoje); datas sempre editáveis
+$('dtDe').readOnly=false;
+$('dtAte').readOnly=false;
+[...$('filtPeriodo').querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.per==='tudo')));
+aplicarPresetDatas();
+filtrar();
+</script>
+</body>
+</html>

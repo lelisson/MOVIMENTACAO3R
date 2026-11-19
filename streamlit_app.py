@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Painel 3R Indústria — controle de estoque (Omie, somente leitura) no Streamlit Cloud."""
+"""Painel 3R — só exibe o HTML gerado pelo GitHub Actions (sem chaves Omie no Streamlit)."""
 
 from __future__ import annotations
 
-from datetime import date
+from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
 
-from estoque3r import montar_dashboard
+DASHBOARD = Path(__file__).resolve().parent / "public" / "dashboard.html"
 
 st.set_page_config(
     page_title="Estoque · 3R Indústria",
@@ -47,72 +47,35 @@ st.markdown(
 )
 
 
-def _ler_secret(nome: str) -> str:
-    try:
-        val = st.secrets.get(nome, "")
-        return str(val or "").strip()
-    except Exception:
-        return ""
-
-
-def _tem_credenciais() -> bool:
-    return bool(_ler_secret("OMIE_3R_APP_KEY") and _ler_secret("OMIE_3R_APP_SECRET"))
-
-
-@st.cache_data(ttl=30 * 60, show_spinner=False)
-def _html_painel(cache_key: str) -> str:
-    _ = cache_key
-    ini = date(2026, 1, 1)
-    fim = date.today()
-    # Sempre dados reais da Omie (chaves vêm de st.secrets / env)
-    return montar_dashboard(ini, fim, demo=False)
-
-
 def main() -> None:
-    if "refresh_nonce" not in st.session_state:
-        st.session_state.refresh_nonce = 0
-
-    qp = st.query_params
-    if qp.get("refresh"):
-        st.session_state.refresh_nonce += 1
-        _html_painel.clear()
+    # ?refresh= no HTML só recarrega a página (busca o HTML já publicado)
+    if st.query_params.get("refresh"):
         st.query_params.clear()
+        st.rerun()
 
-    if not _tem_credenciais():
+    if not DASHBOARD.exists():
         st.markdown(
             """
             <div style="max-width:720px;margin:48px auto;padding:28px 32px;background:#111622;
                         border:1px solid #1e2636;border-radius:12px;color:#e7ecf5;font-family:system-ui,sans-serif">
-              <h2 style="margin:0 0 12px;font-size:20px">Faltam as chaves da Omie</h2>
-              <p style="margin:0 0 14px;color:#9ba7ba;line-height:1.5">
-                Sem <code>OMIE_3R_APP_KEY</code> e <code>OMIE_3R_APP_SECRET</code> o painel
-                <b>não consulta a Omie</b>. Configure nos Secrets da Cloud (nunca no GitHub):
+              <h2 style="margin:0 0 12px;font-size:20px">Painel ainda não publicado</h2>
+              <p style="margin:0;color:#9ba7ba;line-height:1.5">
+                O Streamlit <b>não usa chave Omie</b>. Os dados vêm do arquivo
+                <code>public/dashboard.html</code>, gerado pelo GitHub Actions.
               </p>
-              <ol style="color:#9ba7ba;line-height:1.6;margin:0 0 16px;padding-left:20px">
-                <li>No app Streamlit → ⋮ → <b>Settings</b> → <b>Secrets</b></li>
-                <li>Cole o bloco abaixo e salve</li>
-                <li>Faça <b>Reboot app</b></li>
+              <ol style="color:#9ba7ba;line-height:1.6;margin:16px 0 0;padding-left:20px">
+                <li>No GitHub → Settings → Secrets → Actions → cadastre
+                    <code>OMIE_3R_APP_KEY</code> e <code>OMIE_3R_APP_SECRET</code></li>
+                <li>Actions → <b>Publicar painel Omie</b> → Run workflow</li>
+                <li>Recarregue este app</li>
               </ol>
-              <pre style="background:#0a0d14;border:1px solid #1e2636;border-radius:8px;
-                          padding:14px;overflow:auto;color:#a5b4fc;font-size:13px">OMIE_3R_APP_KEY = "sua_app_key_aqui"
-OMIE_3R_APP_SECRET = "sua_app_secret_aqui"</pre>
             </div>
             """,
             unsafe_allow_html=True,
         )
         return
 
-    cache_key = f"{date.today().isoformat()}-{st.session_state.refresh_nonce}"
-    try:
-        with st.spinner("Consultando Omie (somente leitura)…"):
-            html = _html_painel(cache_key)
-    except SystemExit as e:
-        st.error(str(e) or "Falha ao montar o painel.")
-        return
-    except Exception as e:
-        st.error(f"Erro ao montar o painel: {e}")
-        return
-
+    html = DASHBOARD.read_text(encoding="utf-8")
     components.html(html, height=1400, scrolling=True)
 
 

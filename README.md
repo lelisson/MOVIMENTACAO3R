@@ -1,48 +1,39 @@
 # Movimentação 3R — controle de estoque
 
-Painel interativo da **3R Indústria** (Omie, **somente leitura**).
+Painel interativo da **3R Indústria**.
 
-## Regras
+## Como funciona (sem chave no Streamlit)
 
-- Entrada CFOP **1901** → alimenta saldo  
-- Saída CFOP **5902** → consome NF de origem na observação da remessa  
-- CFOP **5124** → só valor financeiro (não move estoque)  
-- NFs canceladas: filtro no cabeçalho; não entram no saldo  
+1. **GitHub Actions** consulta a Omie (somente leitura) com secrets do repositório  
+2. Gera `public/dashboard.html` e faz commit  
+3. **Streamlit Cloud** só exibe esse HTML — **não precisa** de `OMIE_*` nos Secrets do Streamlit  
+
+## Secrets no GitHub (Actions)
+
+Repo → **Settings → Secrets and variables → Actions**:
+
+| Secret | Uso |
+|--------|-----|
+| `OMIE_3R_APP_KEY` | App Key Omie 3R |
+| `OMIE_3R_APP_SECRET` | App Secret Omie 3R |
+| `STREAMLIT_APP_URL` | URL do app (anti-sono) |
+
+## Publicar dados
+
+- Automático: a cada 4 horas (`Publicar painel Omie`)  
+- Manual: **Actions → Publicar painel Omie → Run workflow**
 
 ## Streamlit Cloud
 
-1. Deploy deste repositório no [Streamlit Cloud](https://share.streamlit.io/)  
-2. Main file: `streamlit_app.py`  
-3. Em **Settings → Secrets** (nunca no git):
+- Main file: `streamlit_app.py`  
+- **Não** cadastre chaves Omie no Streamlit  
 
-```toml
-OMIE_3R_APP_KEY = "sua_app_key"
-OMIE_3R_APP_SECRET = "sua_app_secret"
-```
+## Manter ativo
 
-## Manter ativo (não dormir)
+Workflow `Manter painel ativo` visita o app a cada 2 h (usa `STREAMLIT_APP_URL`).
 
-O workflow `.github/workflows/manter-ativo.yml` visita o app a cada 2 horas.
+## Regras de negócio
 
-No GitHub do repo → **Settings → Secrets and variables → Actions**:
-
-- `STREAMLIT_APP_URL` = `https://seu-app.streamlit.app`
-
-## Local
-
-```bash
-pip install -r requirements.txt
-# defina OMIE_3R_APP_KEY e OMIE_3R_APP_SECRET no ambiente
-streamlit run streamlit_app.py
-```
-
-Ou HTML:
-
-```bash
-python estoque3r.py --de 01/01/2026 --abrir
-```
-
-## Segurança
-
-- Sem chaves no repositório  
-- API Omie só com métodos de leitura (`ListarNF`, `ConsultarNF`, `ConsultarRemessa`)  
+- Entrada CFOP **1901** · Saída CFOP **5902** (NF origem na remessa)  
+- CFOP **5124** só financeiro  
+- Canceladas: filtro no painel; não entram no saldo  

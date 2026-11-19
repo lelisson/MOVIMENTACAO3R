@@ -1,6 +1,7 @@
 .env
 .streamlit/secrets.toml
 saida/
+cache_ci/
 __pycache__/
 *.pyc
 .venv/

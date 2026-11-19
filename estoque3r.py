@@ -783,6 +783,7 @@ def montar_dashboard(ini: date, fim: date, *, demo: bool = False, usar_cache: bo
         fonte = "cache local"
     else:
         entradas, saidas, financeiro = coletar(ini, fim)
+        fonte = "Omie API"
 
     saldos = calcular_saldos(entradas, saidas)
     tot_fin = sum(float(r.get("valor_nf") or 0) for r in financeiro)

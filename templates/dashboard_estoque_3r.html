@@ -70,6 +70,7 @@
         <button type="button" data-st="sem_vinculo">Saídas s/ vínculo</button>
       </div>
       <input class="search" id="q" type="search" placeholder="Buscar NF, produto ou observação" aria-label="Buscar">
+      <button class="btn pri" id="btnAtualizar" type="button" title="Buscar dados atualizados na Omie">Atualizar</button>
       <button class="btn" id="btnCsv" type="button">Exportar CSV</button>
     </div>
   </header>
@@ -597,6 +598,21 @@ $('nav').addEventListener('click',e=>{
   const a=e.target.closest('a[href^="#"]'); if(!a) return;
   [...$('nav').querySelectorAll('a')].forEach(x=>x.classList.toggle('on',x===a));
 });
+
+$('btnAtualizar').onclick=()=>{
+  $('statusTxt').textContent='Atualizando…';
+  $('status').classList.add('busy');
+  try{
+    // No Streamlit (iframe): recarrega a página pai com ?refresh= para limpar cache
+    if(window.top && window.top!==window){
+      const u=new URL(window.top.location.href);
+      u.searchParams.set('refresh', String(Date.now()));
+      window.top.location.href=u.toString();
+      return;
+    }
+  }catch(e){/* arquivo local / sandbox */}
+  location.reload();
+};
 
 $('btnCsv').onclick=()=>{
   const rows=[['NF origem','Data','Produto','CFOP','Entrada','Saida','Saldo','Pct restante']];

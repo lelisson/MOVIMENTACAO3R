@@ -27,12 +27,8 @@ Repo → **Settings → Secrets and variables → Actions**:
 ## Streamlit Cloud
 
 - Main file: `streamlit_app.py`  
-- **Não** cadastre chaves Omie no Streamlit  
-- Para o botão Atualizar forçar a coleta, cadastre só:
-
-| Secret Streamlit | Uso |
-|------------------|-----|
-| `GH_DISPATCH_TOKEN` | PAT GitHub com `actions:write` (e leitura de runs) neste repo |
+- **Não** cadastre chaves Omie (nem PAT) no Streamlit  
+- Botão **Atualizar** sinaliza o Actions via canal ntfy (`public/force_channel.txt`); o workflow escuta a cada ~5 min e reinicia a janela de 4 h
 
 ## Manter ativo
 

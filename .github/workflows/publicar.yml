@@ -2,9 +2,8 @@ name: Publicar painel Omie
 
 on:
   schedule:
-    # A cada hora; o script só publica se já passaram 4h da última
-    # (forçada ou automática). Assim o botão Atualizar "reinicia" a janela.
-    - cron: "17 * * * *"
+    # A cada 5 min: só coleta Omie se (force via ntfy) ou (já passaram 4h).
+    - cron: "*/3 * * * *"
   workflow_dispatch:
     inputs:
       force:
@@ -14,7 +13,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
   group: publicar-painel-3r
@@ -36,18 +34,34 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Checar pedido forçado (ntfy)
+        id: ntfy
+        run: |
+          set -e
+          OUT=$(python scripts/checar_force_ntfy.py)
+          echo "$OUT"
+          FORCE=$(echo "$OUT" | awk -F= '/^FORCE=/{print $2; exit}')
+          echo "force=${FORCE}" >> "$GITHUB_OUTPUT"
+
       - name: Decidir se publica
         id: gate
         env:
-          FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.force || 'false' }}
+          FORCE_PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.force) || steps.ntfy.outputs.force == 'yes' }}
         run: |
           set -e
+          # FORCE_PUBLISH pode ser True/true/yes
+          if [ "${{ steps.ntfy.outputs.force }}" = "yes" ]; then
+            export FORCE_PUBLISH=true
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            export FORCE_PUBLISH=true
+          fi
           OUT=$(python scripts/deve_publicar.py)
           echo "$OUT"
           RUN=$(echo "$OUT" | awk -F= '/^RUN=/{print $2; exit}')
           echo "run=${RUN}" >> "$GITHUB_OUTPUT"
           if [ "$RUN" != "yes" ]; then
-            echo "Dentro da janela de 4h — pulando coleta Omie."
+            echo "Dentro da janela de 4h e sem force — pulando."
           fi
 
       - name: Conferir secrets Omie
@@ -69,7 +83,7 @@ jobs:
       - name: Gerar dashboard
         if: steps.gate.outputs.run == 'yes'
         env:
-          PUBLISH_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force && 'force' || github.event_name }}
+          PUBLISH_SOURCE: ${{ steps.ntfy.outputs.force == 'yes' && 'force' || github.event_name }}
         run: python scripts/publicar_painel.py
 
       - name: Publicar HTML no repositório

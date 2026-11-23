@@ -82,9 +82,12 @@
         <div class="chart tall"><canvas id="cDisp"></canvas></div>
       </div>
       <div class="card">
-        <div class="ch"><h3>Uso do saldo</h3></div>
+        <div class="ch"><h3>Uso do saldo</h3><span class="muted">Total · Stretch · Contrátil</span></div>
         <div class="donut"><canvas id="cUso"></canvas><div class="donut-c" id="usoC"></div></div>
         <div class="leg" id="usoLeg"></div>
+        <div class="ch uso-prod-h"><h3>Saldo por produto</h3><span class="muted">Disponível e já utilizado</span></div>
+        <div class="chart uso-prod"><canvas id="cUsoProd"></canvas></div>
+        <div class="leg" id="usoProdLeg"></div>
       </div>
     </div>
   </section>
@@ -531,7 +534,7 @@ function render(lista){
       scales:{x:{max:100,ticks:{callback:v=>v+'%'},grid:{color:css('--grid')}},y:{grid:{display:false}}}}});
 
   const usado=S.reduce((s,r)=>s+(r.saida||0),0);
-  const disp=S.reduce((s,r)=>s+(r.saldo||0),0);
+  const disp=S.reduce((s,r)=>s+Math.max(0,r.saldo||0),0);
   const tot=usado+disp||1;
   if(charts.uso) charts.uso.destroy();
   charts.uso=new Chart($('cUso'),{type:'doughnut',data:{labels:['Já utilizado','Ainda disponível'],datasets:[{data:[usado,disp],backgroundColor:[css('--c3'),css('--c6')],borderWidth:0}]},
@@ -540,6 +543,51 @@ function render(lista){
   $('usoLeg').innerHTML=`
     <div><i style="background:${css('--c3')}"></i><span>Já utilizado</span><span class="v">${num(usado)}</span><span class="p">${pct(usado/tot,0)}</span></div>
     <div><i style="background:${css('--c6')}"></i><span>Ainda disponível</span><span class="v">${num(disp)}</span><span class="p">${pct(disp/tot,0)}</span></div>`;
+
+  // Saldo separado: Stretch x Contrátil (e Outros, se houver)
+  const fams=['Stretch','Contrátil','Outros'];
+  const porFam=Object.fromEntries(fams.map(f=>[f,{usado:0,disp:0}]));
+  for(const r of S){
+    const f=familiaProduto(r);
+    porFam[f].usado+=(r.saida||0);
+    porFam[f].disp+=Math.max(0,r.saldo||0);
+  }
+  const famsAtivas=fams.filter(f=>porFam[f].usado>0.0001 || porFam[f].disp>0.0001);
+  const labelsFam=famsAtivas.length?famsAtivas:['Stretch','Contrátil'];
+  const usadoFam=labelsFam.map(f=>+porFam[f].usado.toFixed(2));
+  const dispFam=labelsFam.map(f=>+porFam[f].disp.toFixed(2));
+  if(charts.usoProd) charts.usoProd.destroy();
+  charts.usoProd=new Chart($('cUsoProd'),{
+    type:'bar',
+    data:{
+      labels:labelsFam,
+      datasets:[
+        {label:'Já utilizado',data:usadoFam,backgroundColor:css('--c3'),borderRadius:6,barPercentage:0.7},
+        {label:'Ainda disponível',data:dispFam,backgroundColor:css('--c6'),borderRadius:6,barPercentage:0.7},
+      ],
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{beginAtZero:true,grid:{color:css('--grid')},ticks:{callback:v=>num(v)}},
+        y:{grid:{display:false}},
+      },
+    },
+  });
+  $('usoProdLeg').innerHTML=labelsFam.map(f=>{
+    const u=porFam[f].usado, d=porFam[f].disp, t=u+d||1;
+    return `<div><i style="background:${f==='Stretch'?css('--c2'):f==='Contrátil'?css('--c4'):css('--ink3')}"></i><span>${esc(f)}</span><span class="v">disp. ${num(d)}</span><span class="p">${pct(d/t,0)}</span></div>`;
+  }).join('');
+}
+
+/** Agrupa descrição Omie em Stretch / Contrátil / Outros. */
+function familiaProduto(r){
+  const t=((r.produto||'')+' '+(r.codigo||'')).toLowerCase()
+    .normalize('NFD').replace(/\p{M}/gu,'');
+  if(t.includes('stretch') || t.includes('strech')) return 'Stretch';
+  if(t.includes('termo') || t.includes('contrail') || t.includes('contratil')) return 'Contrátil';
+  return 'Outros';
 }
 
 function chartsBase(){

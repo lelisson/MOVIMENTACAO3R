@@ -552,7 +552,7 @@ function render(lista){
     <div><i style="background:${css('--c2')}"></i><span>Stretch disponível</span><span class="v">${num(dispStretch)}</span><span class="p">${pct(disp?dispStretch/disp:0,0)}</span></div>
     <div><i style="background:${css('--c4')}"></i><span>Contrátil disponível</span><span class="v">${num(dispContratil)}</span><span class="p">${pct(disp?dispContratil/disp:0,0)}</span></div>`;
   if(Math.abs(dispOutros)>0.0001){
-    leg+=`<div><i style="background:${css('--ink3')}"></i><span>Outros disponível</span><span class="v">${num(dispOutros)}</span><span class="p">${pct(disp?dispOutros/disp:0,0)}</span></div>`;
+    leg+=`<div><i style="background:${css('--ink3')}"></i><span>Fita adesiva disponível</span><span class="v">${num(dispOutros)}</span><span class="p"></span></div>`;
   }
   $('usoLeg').innerHTML=leg;
 }

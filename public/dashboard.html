@@ -248,8 +248,7 @@ dialog h3{font-size:16px}dialog p{margin:6px 0 14px}
         <button type="button" data-st="zerado">Zerados</button>
         <button type="button" data-st="sem_vinculo">Saídas s/ vínculo</button>
       </div>
-      <input class="search" id="q" type="search" placeholder="Buscar NF, produto ou observação" aria-label="Buscar">
-      <button class="btn pri" id="btnAtualizar" type="button" title="Buscar dados atualizados na Omie">Atualizar</button>
+      <button class="btn pri" id="btnAtualizar" type="button" title="Força nova coleta na Omie e reinicia a janela de 4 horas">Atualizar</button>
       <button class="btn" id="btnCsv" type="button">Exportar CSV</button>
     </div>
   </header>
@@ -578,7 +577,6 @@ function filtrar(){
   S=calcSaldos(Eate, Xate);
   pos={inicial, entradas, saidas, saidas_vinc, saidas_sem, final};
 
-  const qGlob=($('q').value||'').trim().toLowerCase();
   const qSaldo=($('qSaldo').value||'').trim().toLowerCase();
   let lista=S.slice();
   if(modo==='disponivel') lista=lista.filter(r=>r.saldo>0.0001);
@@ -586,7 +584,6 @@ function filtrar(){
   else if(modo==='zerado') lista=lista.filter(r=>r.saldo<=0.0001);
   else if(modo==='sem_vinculo') lista=[];
   const matchSaldo=r=>[r.nf,r.produto,r.codigo,r.cfop].join(' ').toLowerCase();
-  if(qGlob) lista=lista.filter(r=>matchSaldo(r).includes(qGlob));
   if(qSaldo) lista=lista.filter(r=>matchSaldo(r).includes(qSaldo));
 
   const rotulo={tudo:'Todo o período',mes:'Mês atual',trimestre:'Trimestre atual',custom:'Período específico'}[modoPer]||'Período';
@@ -752,7 +749,6 @@ $('filtStatus').addEventListener('click',e=>{
   [...$('filtStatus').querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
   modo=b.dataset.st; filtrar();
 });
-$('q').addEventListener('input',filtrar);
 $('qSaldo').addEventListener('input',filtrar);
 $('qMov').addEventListener('input',filtrar);
 
@@ -779,13 +775,13 @@ $('nav').addEventListener('click',e=>{
 });
 
 $('btnAtualizar').onclick=()=>{
-  $('statusTxt').textContent='Atualizando…';
+  $('statusTxt').textContent='Forçando coleta Omie…';
   $('status').classList.add('busy');
   try{
-    // No Streamlit (iframe): recarrega a página pai com ?refresh= para limpar cache
+    // Streamlit (iframe): pede force_refresh → dispara Actions e reinicia janela de 4h
     if(window.top && window.top!==window){
       const u=new URL(window.top.location.href);
-      u.searchParams.set('refresh', String(Date.now()));
+      u.searchParams.delete('refresh');\n      u.searchParams.set('force_refresh', '1');
       window.top.location.href=u.toString();
       return;
     }

@@ -2,11 +2,12 @@
 
 Painel interativo da **3R Indústria**.
 
-## Como funciona (sem chave no Streamlit)
+## Como funciona (sem chave Omie no Streamlit)
 
 1. **GitHub Actions** consulta a Omie (somente leitura) com secrets do repositório  
-2. Gera `public/dashboard.html` e faz commit  
-3. **Streamlit Cloud** só exibe esse HTML — **não precisa** de `OMIE_*` nos Secrets do Streamlit  
+2. Gera `public/dashboard.html` + `public/last_publish.json` e faz commit  
+3. **Streamlit Cloud** só exibe esse HTML (busca o arquivo fresco no GitHub)  
+4. Botão **Atualizar** dispara uma publicação **forçada** e reinicia a janela de 4 h  
 
 ## Secrets no GitHub (Actions)
 
@@ -20,13 +21,18 @@ Repo → **Settings → Secrets and variables → Actions**:
 
 ## Publicar dados
 
-- Automático: a cada 4 horas (`Publicar painel Omie`)  
-- Manual: **Actions → Publicar painel Omie → Run workflow**
+- Automático: o cron roda **a cada hora**, mas só coleta Omie se já passaram **4 h** da última publicação  
+- Forçado: botão **Atualizar** no painel (ou Actions → Run workflow com `force`) — reinicia a contagem de 4 h  
 
 ## Streamlit Cloud
 
 - Main file: `streamlit_app.py`  
 - **Não** cadastre chaves Omie no Streamlit  
+- Para o botão Atualizar forçar a coleta, cadastre só:
+
+| Secret Streamlit | Uso |
+|------------------|-----|
+| `GH_DISPATCH_TOKEN` | PAT GitHub com `actions:write` (e leitura de runs) neste repo |
 
 ## Manter ativo
 

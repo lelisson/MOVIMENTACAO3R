@@ -1,7 +1,7 @@
 {
-  "published_at": "2026-11-23T10:08:00-03:00",
-  "published_at_utc": "2026-11-23T13:08:00+00:00",
-  "source": "workflow_dispatch",
+  "published_at": "2026-11-23T10:39:19.560741-03:00",
+  "published_at_utc": "2026-11-23T13:39:19.560762+00:00",
+  "source": "force",
   "periodo_ate": "2026-11-23",
-  "bytes": 467804
+  "bytes": 467592
 }

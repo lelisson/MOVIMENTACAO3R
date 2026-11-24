@@ -100,6 +100,7 @@
     <div class="card">
       <div class="tw"><table id="tSaldos"><thead><tr>
         <th>NF origem</th><th>Data entrada</th><th>Produto</th><th>CFOP</th>
+        <th class="num">Vl. unitário</th>
         <th class="num">Entrada</th><th class="num">Saídas</th><th class="num">Saldo</th>
         <th class="num">% restante</th><th>Status</th>
       </tr></thead><tbody></tbody></table></div>
@@ -123,7 +124,8 @@
         <span class="muted" id="movSub"></span>
       </div>
       <div class="tw" id="mEnt"><table id="tEnt"><thead><tr>
-        <th>NF</th><th>Data</th><th>Produto</th><th>CFOP</th><th class="num">Qtde</th><th class="num">Valor</th>
+        <th>NF</th><th>Data</th><th>Produto</th><th>CFOP</th>
+        <th class="num">Vl. unitário</th><th class="num">Qtde</th><th class="num">Valor</th>
       </tr></thead><tbody></tbody></table></div>
       <div class="tw" id="mSai" hidden><table id="tSai"><thead><tr>
         <th>NF saída</th><th>Data</th><th>Produto</th><th>CFOP</th><th class="num">Qtde</th>
@@ -292,13 +294,17 @@ function calcSaldos(entradas, saidas){
   for(const e of entradas){
     const chave=e.nf+'|'+(e.codigo||e.produto||'');
     if(!lotes.has(chave)){
-      lotes.set(chave,{nf:e.nf,data:e.data,produto:e.produto,codigo:e.codigo,cfop:e.cfop,entrada:0,saida:0});
+      lotes.set(chave,{nf:e.nf,data:e.data,produto:e.produto,codigo:e.codigo,cfop:e.cfop,entrada:0,saida:0,valor_total:0});
       ordem.push(chave);
       if(!porNf.has(e.nf)) porNf.set(e.nf,[]);
       porNf.get(e.nf).push(chave);
     }
     const L=lotes.get(chave);
-    L.entrada+=e.qtde||0;
+    const qtde=e.qtde||0;
+    L.entrada+=qtde;
+    let vUn=e.valor_unitario||0;
+    if(!(vUn>0) && qtde) vUn=(e.valor||0)/qtde;
+    L.valor_total+=vUn*qtde;
     if(e.data && (!L.data || e.data<L.data)) L.data=e.data;
   }
   for(const s of saidas){
@@ -310,7 +316,7 @@ function calcSaldos(entradas, saidas){
       const cands=porNf.get(origem)||[];
       if(cands.length) chave=cands[0];
       else {
-        lotes.set(chave,{nf:origem,data:s.data,produto:s.produto||'(sem entrada no período)',codigo:s.codigo,cfop:'',entrada:0,saida:0});
+        lotes.set(chave,{nf:origem,data:s.data,produto:s.produto||'(sem entrada no período)',codigo:s.codigo,cfop:'',entrada:0,saida:0,valor_total:0});
         ordem.push(chave);
         if(!porNf.has(origem)) porNf.set(origem,[]);
         porNf.get(origem).push(chave);
@@ -323,9 +329,11 @@ function calcSaldos(entradas, saidas){
     const r=lotes.get(chave);
     const saldo=r.entrada-r.saida;
     const pct_restante=r.entrada>1e-12?(saldo/r.entrada):(r.saida>0?0:1);
+    const valor_unitario=r.entrada>1e-12?(r.valor_total/r.entrada):0;
     out.push({
       nf:r.nf,data:r.data,produto:r.produto,codigo:r.codigo,cfop:r.cfop,
       entrada:+r.entrada.toFixed(6),saida:+r.saida.toFixed(6),saldo:+saldo.toFixed(6),
+      valor_unitario:+valor_unitario.toFixed(6),
       pct_restante:saldo>=0?Math.max(pct_restante,0):pct_restante
     });
   }
@@ -456,9 +464,9 @@ function render(lista){
 
   const tb=$('tSaldos').querySelector('tbody');
   if(modo==='sem_vinculo'){
-    tb.innerHTML=`<tr><td colspan="9" class="empty">Use a aba Alertas para saídas sem vínculo</td></tr>`;
+    tb.innerHTML=`<tr><td colspan="10" class="empty">Use a aba Alertas para saídas sem vínculo</td></tr>`;
   }else if(!lista.length){
-    tb.innerHTML=`<tr><td colspan="9" class="empty">Nenhum saldo no filtro</td></tr>`;
+    tb.innerHTML=`<tr><td colspan="10" class="empty">Nenhum saldo no filtro</td></tr>`;
   }else{
     tb.innerHTML=lista.map(r=>{
       const st=statusSaldo(r);
@@ -466,6 +474,7 @@ function render(lista){
       return `<tr>
         <td><b>${esc(r.nf)}</b></td><td>${dbr(r.data)}</td>
         <td class="wrapc">${esc(r.produto||'—')}</td><td>${esc(r.cfop||'—')}</td>
+        <td class="num">${r.valor_unitario?brl(r.valor_unitario):'—'}</td>
         <td class="num">${num(r.entrada)}</td><td class="num">${num(r.saida)}</td>
         <td class="num"><b>${num(r.saldo)}</b></td>
         <td class="num"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
@@ -483,10 +492,14 @@ function render(lista){
   if($('movSub')) $('movSub').textContent=`${Eview.length} entrada(s) · ${Xview.length} saída(s)`;
 
   const tagCanc=r=>r.cancelada?' <span class="tag can">Cancelada</span>':'';
-  $('tEnt').querySelector('tbody').innerHTML=Eview.length?Eview.map(r=>`<tr>
+  $('tEnt').querySelector('tbody').innerHTML=Eview.length?Eview.map(r=>{
+    const vUn=r.valor_unitario||((r.qtde)?(r.valor||0)/r.qtde:0);
+    return `<tr>
     <td><b>${esc(r.nf)}</b>${tagCanc(r)}</td><td>${dbr(r.data)}</td><td class="wrapc">${esc(r.produto)}</td>
-    <td>${esc(r.cfop)}</td><td class="num">${num(r.qtde)}</td><td class="num">${brl(r.valor)}</td>
-  </tr>`).join(''):`<tr><td colspan="6" class="empty">${qMov?'Nenhuma entrada na busca':'Sem entradas no filtro'}</td></tr>`;
+    <td>${esc(r.cfop)}</td><td class="num">${vUn?brl(vUn):'—'}</td>
+    <td class="num">${num(r.qtde)}</td><td class="num">${brl(r.valor)}</td>
+  </tr>`;
+  }).join(''):`<tr><td colspan="7" class="empty">${qMov?'Nenhuma entrada na busca':'Sem entradas no filtro'}</td></tr>`;
 
   $('tSai').querySelector('tbody').innerHTML=Xview.length?Xview.map(r=>`<tr>
     <td><b>${esc(r.nf)}</b>${tagCanc(r)}</td><td>${dbr(r.data)}</td><td class="wrapc">${esc(r.produto)}</td>
@@ -636,8 +649,8 @@ $('btnAtualizar').onclick=()=>{
 };
 
 $('btnCsv').onclick=()=>{
-  const rows=[['NF origem','Data','Produto','CFOP','Entrada','Saida','Saldo','Pct restante']];
-  for(const r of S) rows.push([r.nf,r.data,r.produto,r.cfop,r.entrada,r.saida,r.saldo,(r.pct_restante*100).toFixed(2)+'%']);
+  const rows=[['NF origem','Data','Produto','CFOP','Vl unitario','Entrada','Saida','Saldo','Pct restante']];
+  for(const r of S) rows.push([r.nf,r.data,r.produto,r.cfop,r.valor_unitario||'',r.entrada,r.saida,r.saldo,(r.pct_restante*100).toFixed(2)+'%']);
   rows.push([]);
   rows.push(['NF 5124','Data','Cliente','CFOP','Qtde','Valor NF','Move estoque']);
   for(const r of F) rows.push([r.nf,r.data,r.cliente,r.cfop,r.qtde,r.valor_nf,'Nao']);

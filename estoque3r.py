@@ -422,6 +422,10 @@ def iter_itens_estoque(nf: dict):
         qtde = float(prod.get("qCom") or prod.get("qTrib") or 0)
         if abs(qtde) < 1e-12:
             continue
+        valor = float(prod.get("vProd") or prod.get("vTotItem") or 0)
+        v_un = float(prod.get("vUnCom") or prod.get("vUnTrib") or 0)
+        if v_un <= 0 and abs(qtde) > 1e-12:
+            v_un = valor / qtde
         yield {
             "nf": nNF,
             "data": data,
@@ -431,7 +435,8 @@ def iter_itens_estoque(nf: dict):
             "codigo": str(prod.get("cProd") or "").strip(),
             "cfop": cfop,
             "qtde": qtde,
-            "valor": float(prod.get("vProd") or prod.get("vTotItem") or 0),
+            "valor": valor,
+            "valor_unitario": round(v_un, 6),
             "obs": obs,
             "nf_origem": nf_origem,
             "tpNF": tp,
@@ -552,6 +557,7 @@ def dados_demo() -> tuple[list[dict], list[dict], list[dict]]:
             "cfop": "1901",
             "qtde": 10000.0,
             "valor": 50000.0,
+            "valor_unitario": 5.0,
             "obs": "",
             "nf_origem": None,
             "tpNF": "0",
@@ -564,6 +570,7 @@ def dados_demo() -> tuple[list[dict], list[dict], list[dict]]:
             "cfop": "1901",
             "qtde": 4000.0,
             "valor": 18000.0,
+            "valor_unitario": 4.5,
             "obs": "",
             "nf_origem": None,
             "tpNF": "0",
@@ -576,6 +583,7 @@ def dados_demo() -> tuple[list[dict], list[dict], list[dict]]:
             "cfop": "1901",
             "qtde": 2500.0,
             "valor": 12500.0,
+            "valor_unitario": 5.0,
             "obs": "",
             "nf_origem": None,
             "tpNF": "0",
@@ -677,9 +685,15 @@ def calcular_saldos(entradas: list[dict], saidas: list[dict]) -> list[dict]:
                 "cfop": e["cfop"],
                 "entrada": 0.0,
                 "saida": 0.0,
+                "valor_total": 0.0,
             }
             ordem.append(chave)
-        lotes[chave]["entrada"] += e["qtde"]
+        qtde = float(e.get("qtde") or 0)
+        lotes[chave]["entrada"] += qtde
+        v_un = float(e.get("valor_unitario") or 0)
+        if v_un <= 0 and qtde:
+            v_un = float(e.get("valor") or 0) / qtde
+        lotes[chave]["valor_total"] += v_un * qtde
         if e["data"] and (not lotes[chave]["data"] or e["data"] < lotes[chave]["data"]):
             lotes[chave]["data"] = e["data"]
 
@@ -707,6 +721,7 @@ def calcular_saldos(entradas: list[dict], saidas: list[dict]) -> list[dict]:
                     "cfop": "",
                     "entrada": 0.0,
                     "saida": 0.0,
+                    "valor_total": 0.0,
                 }
                 ordem.append(chave)
                 por_nf[origem].append(chave)
@@ -721,6 +736,7 @@ def calcular_saldos(entradas: list[dict], saidas: list[dict]) -> list[dict]:
         saida = r["saida"]
         saldo = entrada - saida
         pct_rest = (saldo / entrada) if entrada > 1e-12 else (0.0 if saida > 0 else 1.0)
+        valor_unitario = (r["valor_total"] / entrada) if entrada > 1e-12 else 0.0
         saldos.append(
             {
                 "nf": r["nf"],
@@ -731,6 +747,7 @@ def calcular_saldos(entradas: list[dict], saidas: list[dict]) -> list[dict]:
                 "entrada": round(entrada, 6),
                 "saida": round(saida, 6),
                 "saldo": round(saldo, 6),
+                "valor_unitario": round(valor_unitario, 6),
                 "pct_restante": max(pct_rest, 0.0) if saldo >= 0 else pct_rest,
             }
         )

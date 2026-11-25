@@ -665,11 +665,50 @@ def dados_demo() -> tuple[list[dict], list[dict], list[dict]]:
     return entradas, saidas, financeiro
 
 
+def familia_produto(produto: str = "", codigo: str = "") -> str:
+    """Stretch / Contrátil / Outros — usado para abater saída sem NF origem."""
+    t = f"{produto or ''} {codigo or ''}".lower()
+    # remove acentos simples
+    for a, b in (
+        ("á", "a"),
+        ("à", "a"),
+        ("ã", "a"),
+        ("â", "a"),
+        ("é", "e"),
+        ("ê", "e"),
+        ("í", "i"),
+        ("ó", "o"),
+        ("ô", "o"),
+        ("õ", "o"),
+        ("ú", "u"),
+        ("ç", "c"),
+    ):
+        t = t.replace(a, b)
+    if "stretch" in t or "strech" in t:
+        return "Stretch"
+    if "termo" in t or "contrail" in t or "contratil" in t:
+        return "Contrátil"
+    return "Outros"
+
+
+def _lote_vazio(nf: str, data: str, produto: str, codigo: str, cfop: str = "") -> dict:
+    return {
+        "nf": nf,
+        "data": data,
+        "produto": produto,
+        "codigo": codigo,
+        "cfop": cfop,
+        "entrada": 0.0,
+        "saida": 0.0,
+        "valor_total": 0.0,
+    }
+
+
 def calcular_saldos(entradas: list[dict], saidas: list[dict]) -> list[dict]:
     """
     Agrupa por (NF origem, código produto).
-    Entrada soma; saída com nf_origem abate do lote correspondente.
-    Se o código não casar, abate pelo primeiro lote da mesma NF.
+    - Saída com nf_origem: abate o lote da NF referida.
+    - Saída sem nf_origem: abate FIFO no saldo da família (Stretch/Contrátil/Outros).
     """
     lotes: dict[tuple[str, str], dict] = {}
     ordem: list[tuple[str, str]] = []
@@ -677,16 +716,9 @@ def calcular_saldos(entradas: list[dict], saidas: list[dict]) -> list[dict]:
     for e in entradas:
         chave = (e["nf"], e["codigo"] or e["produto"])
         if chave not in lotes:
-            lotes[chave] = {
-                "nf": e["nf"],
-                "data": e["data"],
-                "produto": e["produto"],
-                "codigo": e["codigo"],
-                "cfop": e["cfop"],
-                "entrada": 0.0,
-                "saida": 0.0,
-                "valor_total": 0.0,
-            }
+            lotes[chave] = _lote_vazio(
+                e["nf"], e["data"], e["produto"], e["codigo"], e["cfop"]
+            )
             ordem.append(chave)
         qtde = float(e.get("qtde") or 0)
         lotes[chave]["entrada"] += qtde
@@ -701,33 +733,81 @@ def calcular_saldos(entradas: list[dict], saidas: list[dict]) -> list[dict]:
     for chave in ordem:
         por_nf[chave[0]].append(chave)
 
+    sem_origem: list[dict] = []
     for s in saidas:
         origem = s.get("nf_origem")
         if not origem:
+            sem_origem.append(s)
             continue
         cod = s["codigo"] or s["produto"]
         chave = (origem, cod)
         if chave not in lotes:
-            # tenta só pela NF de origem
             candidatos = por_nf.get(origem) or []
             if not candidatos:
-                # cria lote fantasma negativo para evidenciar saída sem entrada no período
                 chave = (origem, cod or "?")
-                lotes[chave] = {
-                    "nf": origem,
-                    "data": s["data"],
-                    "produto": s["produto"] or "(sem entrada no período)",
-                    "codigo": s["codigo"],
-                    "cfop": "",
-                    "entrada": 0.0,
-                    "saida": 0.0,
-                    "valor_total": 0.0,
-                }
+                lotes[chave] = _lote_vazio(
+                    origem,
+                    s["data"],
+                    s["produto"] or "(sem entrada no período)",
+                    s["codigo"],
+                    "",
+                )
                 ordem.append(chave)
                 por_nf[origem].append(chave)
             else:
                 chave = candidatos[0]
-        lotes[chave]["saida"] += s["qtde"]
+        lotes[chave]["saida"] += float(s.get("qtde") or 0)
+
+    def _ord_lote(chave: tuple[str, str]) -> tuple:
+        r = lotes[chave]
+        return (
+            r.get("data") or "",
+            int(re.sub(r"\D", "", str(r.get("nf") or "0")) or 0),
+        )
+
+    sem_origem.sort(
+        key=lambda s: (
+            s.get("data") or "",
+            int(re.sub(r"\D", "", str(s.get("nf") or "0")) or 0),
+        )
+    )
+    for s in sem_origem:
+        qtde = float(s.get("qtde") or 0)
+        if qtde <= 0:
+            continue
+        fam = familia_produto(s.get("produto") or "", s.get("codigo") or "")
+        candidatos = [
+            k
+            for k in ordem
+            if familia_produto(lotes[k].get("produto") or "", lotes[k].get("codigo") or "")
+            == fam
+        ]
+        candidatos.sort(key=_ord_lote)
+        for chave in candidatos:
+            disp = lotes[chave]["entrada"] - lotes[chave]["saida"]
+            if disp <= 1e-12:
+                continue
+            abate = min(disp, qtde)
+            lotes[chave]["saida"] += abate
+            qtde -= abate
+            if qtde <= 1e-12:
+                break
+        if qtde > 1e-12:
+            chave = ("SEM-VÍNCULO", fam)
+            if chave not in lotes:
+                lotes[chave] = _lote_vazio(
+                    "SEM-VÍNCULO",
+                    s.get("data") or "",
+                    f"{fam} (saídas sem NF origem)",
+                    fam,
+                    "",
+                )
+                ordem.append(chave)
+            lotes[chave]["saida"] += qtde
+            if s.get("data") and (
+                not lotes[chave]["data"] or s["data"] < lotes[chave]["data"]
+            ):
+                lotes[chave]["data"] = s["data"]
 
     saldos: list[dict] = []
     for chave in ordem:
@@ -751,8 +831,12 @@ def calcular_saldos(entradas: list[dict], saidas: list[dict]) -> list[dict]:
                 "pct_restante": max(pct_rest, 0.0) if saldo >= 0 else pct_rest,
             }
         )
-    # Ordem de entrada da NF de origem (data, depois número)
-    saldos.sort(key=lambda x: (x.get("data") or "", int(re.sub(r"\D", "", str(x.get("nf") or "0")) or 0)))
+    saldos.sort(
+        key=lambda x: (
+            x.get("data") or "",
+            int(re.sub(r"\D", "", str(x.get("nf") or "0")) or 0),
+        )
+    )
     return saldos
 
 
@@ -816,8 +900,8 @@ def montar_dashboard(ini: date, fim: date, *, demo: bool = False, usar_cache: bo
         "cfop_financeiro": "5124",
         "regra": (
             "Estoque: 1901 entrada / 5902 saída (obs. REFERENTE A NF = origem). "
-            "Saída sem referência não abate saldo por lote. "
-            "CFOP 5124 só valor financeiro. Posição: inicial + movimento = final."
+            "Saída sem NF origem abate FIFO no saldo Stretch/Contrátil. "
+            "CFOP 5124 só valor financeiro. Uso do saldo no gráfico = período filtrado."
         ),
         "financeiro_5124_total": round(tot_fin, 2),
     }

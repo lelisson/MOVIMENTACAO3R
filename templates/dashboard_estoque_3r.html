@@ -193,8 +193,17 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 let modo='todos', modoPer='tudo', modoCanc='ativas', charts={};
-let E=E0.slice(), X=X0.slice(), F=F0.slice(), S=[];
+let E=E0.slice(), X=X0.slice(), F=F0.slice(), S=[], Speriodo=[];
 let pos={inicial:0, entradas:0, saidas:0, saidas_vinc:0, saidas_sem:0, final:0};
+
+/** Agrupa descrição Omie em Stretch / Contrátil / Outros. */
+function familiaProduto(r){
+  const t=((r.produto||'')+' '+(r.codigo||'')).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  if(t.includes('stretch') || t.includes('strech')) return 'Stretch';
+  if(t.includes('termo') || t.includes('contrail') || t.includes('contratil')) return 'Contrátil';
+  return 'Outros';
+}
 
 function ehCanc(r){return !!r.cancelada;}
 function filtroCanc(lista){
@@ -287,6 +296,10 @@ function aplicarPresetDatas(){
   $('dtDe').classList.remove('bad'); $('dtAte').classList.remove('bad');
 }
 
+function novoLote(base){
+  return {nf:base.nf,data:base.data,produto:base.produto,codigo:base.codigo,cfop:base.cfop||'',entrada:0,saida:0,valor_total:0};
+}
+
 function calcSaldos(entradas, saidas){
   const lotes=new Map();
   const ordem=[];
@@ -294,7 +307,7 @@ function calcSaldos(entradas, saidas){
   for(const e of entradas){
     const chave=e.nf+'|'+(e.codigo||e.produto||'');
     if(!lotes.has(chave)){
-      lotes.set(chave,{nf:e.nf,data:e.data,produto:e.produto,codigo:e.codigo,cfop:e.cfop,entrada:0,saida:0,valor_total:0});
+      lotes.set(chave,novoLote({nf:e.nf,data:e.data,produto:e.produto,codigo:e.codigo,cfop:e.cfop}));
       ordem.push(chave);
       if(!porNf.has(e.nf)) porNf.set(e.nf,[]);
       porNf.get(e.nf).push(chave);
@@ -307,16 +320,18 @@ function calcSaldos(entradas, saidas){
     L.valor_total+=vUn*qtde;
     if(e.data && (!L.data || e.data<L.data)) L.data=e.data;
   }
+
+  const semOrigem=[];
   for(const s of saidas){
     const origem=s.nf_origem;
-    if(!origem) continue;
+    if(!origem){ semOrigem.push(s); continue; }
     const cod=s.codigo||s.produto||'';
     let chave=origem+'|'+cod;
     if(!lotes.has(chave)){
       const cands=porNf.get(origem)||[];
       if(cands.length) chave=cands[0];
       else {
-        lotes.set(chave,{nf:origem,data:s.data,produto:s.produto||'(sem entrada no período)',codigo:s.codigo,cfop:'',entrada:0,saida:0,valor_total:0});
+        lotes.set(chave,novoLote({nf:origem,data:s.data,produto:s.produto||'(sem entrada no período)',codigo:s.codigo,cfop:''}));
         ordem.push(chave);
         if(!porNf.has(origem)) porNf.set(origem,[]);
         porNf.get(origem).push(chave);
@@ -324,6 +339,42 @@ function calcSaldos(entradas, saidas){
     }
     lotes.get(chave).saida+=s.qtde||0;
   }
+
+  // Sem NF origem: abate FIFO no saldo da família (Stretch/Contrátil/Outros)
+  semOrigem.sort(cmpMov);
+  for(const s of semOrigem){
+    let qtde=s.qtde||0;
+    if(qtde<=0) continue;
+    const fam=familiaProduto(s);
+    const candidatos=ordem
+      .map(k=>[k,lotes.get(k)])
+      .filter(([,L])=>familiaProduto(L)===fam)
+      .sort((a,b)=>cmpMov(a[1],b[1]));
+    for(const [chave,L] of candidatos){
+      const disp=L.entrada-L.saida;
+      if(disp<=1e-12) continue;
+      const abate=Math.min(disp,qtde);
+      L.saida+=abate;
+      qtde-=abate;
+      if(qtde<=1e-12) break;
+    }
+    if(qtde>1e-12){
+      const chave=`SEM-VINCULO|${fam}`;
+      if(!lotes.has(chave)){
+        lotes.set(chave,novoLote({
+          nf:'SEM-VÍNCULO',
+          data:s.data,
+          produto:`${fam} (saídas sem NF origem)`,
+          codigo:fam,
+          cfop:'',
+        }));
+        ordem.push(chave);
+      }
+      lotes.get(chave).saida+=qtde;
+      if(s.data && (!lotes.get(chave).data || s.data<lotes.get(chave).data)) lotes.get(chave).data=s.data;
+    }
+  }
+
   const out=[];
   for(const chave of ordem){
     const r=lotes.get(chave);
@@ -402,8 +453,10 @@ function filtrar(){
   const Xate=soAtivas(X0.filter(r=>r.data && r.data<=ate));
   const final=somaSaldo(calcSaldos(Eate, Xate));
 
-  // Saldos por ordem de entrada (somente ativas)
+  // Saldos acumulados até a data final (posição + tabela)
   S=calcSaldos(Eate, Xate);
+  // Uso do saldo: só o período selecionado (entradas/saídas em De–Até)
+  Speriodo=calcSaldos(Eatv, Xatv);
   pos={inicial, entradas, saidas, saidas_vinc, saidas_sem, final};
 
   const qSaldo=($('qSaldo').value||'').trim().toLowerCase();
@@ -417,7 +470,7 @@ function filtrar(){
 
   const rotulo={tudo:'Todo o período',mes:'Mês atual',trimestre:'Trimestre atual',custom:'Período específico'}[modoPer]||'Período';
   $('periodo').textContent=`${rotulo}: ${$('dtDe').value} a ${$('dtAte').value} · gerado ${M.gerado_em||''}${M.fonte?` · ${M.fonte}`:''}`;
-  $('posSub').textContent=`${$('dtDe').value} a ${$('dtAte').value} · saídas sem referência não abatem saldo por NF`;
+  $('posSub').textContent=`${$('dtDe').value} a ${$('dtAte').value} · com NF origem abate o lote; sem origem abate Stretch/Contrátil (FIFO)`;
   render(lista);
 }
 
@@ -528,10 +581,10 @@ function render(lista){
     kpi('Estoque final', num(pos.final), 'saldo até a data final'),
   ].join('');
   $('tPos').querySelector('tbody').innerHTML=`
-    <tr><td><b>Estoque inicial</b></td><td class="num">${num(pos.inicial)}</td><td>Saldo das NFs 1901 − saídas 5902 vinculadas, antes do período</td></tr>
+    <tr><td><b>Estoque inicial</b></td><td class="num">${num(pos.inicial)}</td><td>Saldo 1901 − saídas 5902 (com NF origem ou por família), antes do período</td></tr>
     <tr><td>(+) Entradas</td><td class="num up">${num(pos.entradas)}</td><td>CFOP 1901 no período</td></tr>
-    <tr><td>(−) Saídas com NF origem</td><td class="num dn">${num(pos.saidas_vinc)}</td><td>CFOP 5902 com observação “REFERENTE A NF…”</td></tr>
-    <tr><td>Saídas sem referência</td><td class="num wn">${num(pos.saidas_sem)}</td><td>Entram na movimentação, mas não abatem saldo por lote</td></tr>
+    <tr><td>(−) Saídas com NF origem</td><td class="num dn">${num(pos.saidas_vinc)}</td><td>Abatem o lote da NF referida na observação</td></tr>
+    <tr><td>Saídas sem referência</td><td class="num wn">${num(pos.saidas_sem)}</td><td>Abatem FIFO no saldo Stretch / Contrátil / outros</td></tr>
     <tr class="sub-row"><td><b>Estoque final</b></td><td class="num"><b>${num(pos.final)}</b></td><td>Posição acumulada até a data final</td></tr>`;
 
   chartsBase();
@@ -543,12 +596,13 @@ function render(lista){
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{x:{max:100,ticks:{callback:v=>v+'%'},grid:{color:css('--grid')}},y:{grid:{display:false}}}}});
 
-  // usado + disponível = entradas do período (saldo = entrada − saída por lote)
-  const usado=S.reduce((s,r)=>s+(r.saida||0),0);
-  const disp=S.reduce((s,r)=>s+(r.saldo||0),0);
+  // Card Uso do saldo: somente o período selecionado
+  const baseUso=Speriodo;
+  const usado=baseUso.reduce((s,r)=>s+(r.saida||0),0);
+  const disp=baseUso.reduce((s,r)=>s+(r.saldo||0),0);
   const tot=usado+disp||1;
   let dispStretch=0, dispContratil=0, dispOutros=0;
-  for(const r of S){
+  for(const r of baseUso){
     const fam=familiaProduto(r);
     const saldo=r.saldo||0;
     if(fam==='Stretch') dispStretch+=saldo;
@@ -558,25 +612,16 @@ function render(lista){
   if(charts.uso) charts.uso.destroy();
   charts.uso=new Chart($('cUso'),{type:'doughnut',data:{labels:['Já utilizado','Ainda disponível'],datasets:[{data:[usado,disp],backgroundColor:[css('--c3'),css('--c6')],borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{display:false}}}});
-  $('usoC').innerHTML=`<div><b>${pct(disp/tot,0)}</b><span>disponível</span></div>`;
+  $('usoC').innerHTML=`<div><b>${pct(disp/tot,0)}</b><span>disponível no período</span></div>`;
   let leg=`
-    <div><i style="background:${css('--c3')}"></i><span>Já utilizado</span><span class="v">${num(usado)}</span><span class="p">${pct(usado/tot,0)}</span></div>
-    <div><i style="background:${css('--c6')}"></i><span>Ainda disponível</span><span class="v">${num(disp)}</span><span class="p">${pct(disp/tot,0)}</span></div>
+    <div><i style="background:${css('--c3')}"></i><span>Já utilizado no período</span><span class="v">${num(usado)}</span><span class="p">${pct(usado/tot,0)}</span></div>
+    <div><i style="background:${css('--c6')}"></i><span>Ainda disponível no período</span><span class="v">${num(disp)}</span><span class="p">${pct(disp/tot,0)}</span></div>
     <div><i style="background:${css('--c2')}"></i><span>Stretch disponível</span><span class="v">${num(dispStretch)}</span><span class="p">${pct(disp?dispStretch/disp:0,0)}</span></div>
     <div><i style="background:${css('--c4')}"></i><span>Contrátil disponível</span><span class="v">${num(dispContratil)}</span><span class="p">${pct(disp?dispContratil/disp:0,0)}</span></div>`;
   if(Math.abs(dispOutros)>0.0001){
     leg+=`<div><i style="background:${css('--ink3')}"></i><span>Fita adesiva disponível</span><span class="v">${num(dispOutros)}</span><span class="p"></span></div>`;
   }
   $('usoLeg').innerHTML=leg;
-}
-
-/** Agrupa descrição Omie em Stretch / Contrátil / Outros. */
-function familiaProduto(r){
-  const t=((r.produto||'')+' '+(r.codigo||'')).toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  if(t.includes('stretch') || t.includes('strech')) return 'Stretch';
-  if(t.includes('termo') || t.includes('contrail') || t.includes('contratil')) return 'Contrátil';
-  return 'Outros';
 }
 
 function chartsBase(){

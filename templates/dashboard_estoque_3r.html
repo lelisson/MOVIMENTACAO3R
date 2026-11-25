@@ -302,9 +302,9 @@ function novoLote(base){
 
 /**
  * @param {object} [opts]
- * @param {boolean} [opts.semFantasma] — para o gráfico do período: não cria lote
- *   negativo quando a NF de origem entrou fora do filtro; sobra vai pra família FIFO
- *   e o que não couber é ignorado no disponível (não vira saldo negativo).
+ * @param {boolean} [opts.semFantasma] — gráfico do período: não cria lote negativo;
+ *   saída com NF origem fora do filtro NÃO abate de novo por família (evita conta em dobro);
+ *   só saída SEM origem abate FIFO Stretch/Contrátil no estoque do período.
  */
 function calcSaldos(entradas, saidas, opts){
   const semFantasma=!!(opts&&opts.semFantasma);
@@ -338,8 +338,8 @@ function calcSaldos(entradas, saidas, opts){
       const cands=porNf.get(origem)||[];
       if(cands.length) chave=cands[0];
       else if(semFantasma){
-        // entrada da NF origem fora do período → trata como abate por família
-        semOrigem.push(s);
+        // NF origem fora do período: já abate no lote histórico (visão acumulada).
+        // Não reabate por família no estoque do período (evita duplicar).
         continue;
       } else {
         lotes.set(chave,novoLote({nf:origem,data:s.data,produto:s.produto||'(sem entrada no período)',codigo:s.codigo,cfop:''}));
@@ -351,17 +351,16 @@ function calcSaldos(entradas, saidas, opts){
     const L=lotes.get(chave);
     const qtde=s.qtde||0;
     if(semFantasma){
+      // Só abate o que existe neste lote no período — sem jogar resto na família
       const disp=L.entrada-L.saida;
       const abate=Math.min(Math.max(0,disp), qtde);
       L.saida+=abate;
-      const resto=qtde-abate;
-      if(resto>1e-12) semOrigem.push(Object.assign({}, s, {qtde:resto, nf_origem:null}));
     } else {
       L.saida+=qtde;
     }
   }
 
-  // Sem NF origem: abate FIFO no saldo da família (Stretch/Contrátil/Outros)
+  // Sem NF origem: abate UMA vez, FIFO na família (Stretch/Contrátil/Outros)
   semOrigem.sort(cmpMov);
   for(const s of semOrigem){
     let qtde=s.qtde||0;
@@ -394,7 +393,6 @@ function calcSaldos(entradas, saidas, opts){
       lotes.get(chave).saida+=qtde;
       if(s.data && (!lotes.get(chave).data || s.data<lotes.get(chave).data)) lotes.get(chave).data=s.data;
     }
-    // semFantasma: sobra não vira saldo negativo — só deixa de entrar no disponível
   }
 
   const out=[];

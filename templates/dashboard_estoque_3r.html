@@ -300,7 +300,14 @@ function novoLote(base){
   return {nf:base.nf,data:base.data,produto:base.produto,codigo:base.codigo,cfop:base.cfop||'',entrada:0,saida:0,valor_total:0};
 }
 
-function calcSaldos(entradas, saidas){
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.semFantasma] — para o gráfico do período: não cria lote
+ *   negativo quando a NF de origem entrou fora do filtro; sobra vai pra família FIFO
+ *   e o que não couber é ignorado no disponível (não vira saldo negativo).
+ */
+function calcSaldos(entradas, saidas, opts){
+  const semFantasma=!!(opts&&opts.semFantasma);
   const lotes=new Map();
   const ordem=[];
   const porNf=new Map();
@@ -330,14 +337,28 @@ function calcSaldos(entradas, saidas){
     if(!lotes.has(chave)){
       const cands=porNf.get(origem)||[];
       if(cands.length) chave=cands[0];
-      else {
+      else if(semFantasma){
+        // entrada da NF origem fora do período → trata como abate por família
+        semOrigem.push(s);
+        continue;
+      } else {
         lotes.set(chave,novoLote({nf:origem,data:s.data,produto:s.produto||'(sem entrada no período)',codigo:s.codigo,cfop:''}));
         ordem.push(chave);
         if(!porNf.has(origem)) porNf.set(origem,[]);
         porNf.get(origem).push(chave);
       }
     }
-    lotes.get(chave).saida+=s.qtde||0;
+    const L=lotes.get(chave);
+    const qtde=s.qtde||0;
+    if(semFantasma){
+      const disp=L.entrada-L.saida;
+      const abate=Math.min(Math.max(0,disp), qtde);
+      L.saida+=abate;
+      const resto=qtde-abate;
+      if(resto>1e-12) semOrigem.push(Object.assign({}, s, {qtde:resto, nf_origem:null}));
+    } else {
+      L.saida+=qtde;
+    }
   }
 
   // Sem NF origem: abate FIFO no saldo da família (Stretch/Contrátil/Outros)
@@ -358,7 +379,7 @@ function calcSaldos(entradas, saidas){
       qtde-=abate;
       if(qtde<=1e-12) break;
     }
-    if(qtde>1e-12){
+    if(qtde>1e-12 && !semFantasma){
       const chave=`SEM-VINCULO|${fam}`;
       if(!lotes.has(chave)){
         lotes.set(chave,novoLote({
@@ -373,12 +394,14 @@ function calcSaldos(entradas, saidas){
       lotes.get(chave).saida+=qtde;
       if(s.data && (!lotes.get(chave).data || s.data<lotes.get(chave).data)) lotes.get(chave).data=s.data;
     }
+    // semFantasma: sobra não vira saldo negativo — só deixa de entrar no disponível
   }
 
   const out=[];
   for(const chave of ordem){
     const r=lotes.get(chave);
-    const saldo=r.entrada-r.saida;
+    let saldo=r.entrada-r.saida;
+    if(semFantasma) saldo=Math.max(0, saldo);
     const pct_restante=r.entrada>1e-12?(saldo/r.entrada):(r.saida>0?0:1);
     const valor_unitario=r.entrada>1e-12?(r.valor_total/r.entrada):0;
     out.push({
@@ -455,8 +478,8 @@ function filtrar(){
 
   // Saldos acumulados até a data final (posição + tabela)
   S=calcSaldos(Eate, Xate);
-  // Uso do saldo: só o período selecionado (entradas/saídas em De–Até)
-  Speriodo=calcSaldos(Eatv, Xatv);
+  // Uso do saldo: só o período (sem lote fantasma negativo p/ NF origem fora do filtro)
+  Speriodo=calcSaldos(Eatv, Xatv, {semFantasma:true});
   pos={inicial, entradas, saidas, saidas_vinc, saidas_sem, final};
 
   const qSaldo=($('qSaldo').value||'').trim().toLowerCase();
@@ -596,19 +619,19 @@ function render(lista){
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{x:{max:100,ticks:{callback:v=>v+'%'},grid:{color:css('--grid')}},y:{grid:{display:false}}}}});
 
-  // Card Uso do saldo: somente o período selecionado
+  // Card Uso do saldo: somente o período selecionado (disponível nunca negativo)
   const baseUso=Speriodo;
   const usado=baseUso.reduce((s,r)=>s+(r.saida||0),0);
-  const disp=baseUso.reduce((s,r)=>s+(r.saldo||0),0);
-  const tot=usado+disp||1;
   let dispStretch=0, dispContratil=0, dispOutros=0;
   for(const r of baseUso){
     const fam=familiaProduto(r);
-    const saldo=r.saldo||0;
+    const saldo=Math.max(0, r.saldo||0);
     if(fam==='Stretch') dispStretch+=saldo;
     else if(fam==='Contrátil') dispContratil+=saldo;
     else dispOutros+=saldo;
   }
+  const disp=dispStretch+dispContratil+dispOutros;
+  const tot=usado+disp||1;
   if(charts.uso) charts.uso.destroy();
   charts.uso=new Chart($('cUso'),{type:'doughnut',data:{labels:['Já utilizado','Ainda disponível'],datasets:[{data:[usado,disp],backgroundColor:[css('--c3'),css('--c6')],borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{display:false}}}});
@@ -618,7 +641,7 @@ function render(lista){
     <div><i style="background:${css('--c6')}"></i><span>Ainda disponível no período</span><span class="v">${num(disp)}</span><span class="p">${pct(disp/tot,0)}</span></div>
     <div><i style="background:${css('--c2')}"></i><span>Stretch disponível</span><span class="v">${num(dispStretch)}</span><span class="p">${pct(disp?dispStretch/disp:0,0)}</span></div>
     <div><i style="background:${css('--c4')}"></i><span>Contrátil disponível</span><span class="v">${num(dispContratil)}</span><span class="p">${pct(disp?dispContratil/disp:0,0)}</span></div>`;
-  if(Math.abs(dispOutros)>0.0001){
+  if(dispOutros>0.0001){
     leg+=`<div><i style="background:${css('--ink3')}"></i><span>Fita adesiva disponível</span><span class="v">${num(dispOutros)}</span><span class="p"></span></div>`;
   }
   $('usoLeg').innerHTML=leg;
